@@ -1,0 +1,8 @@
+apiVersion: v2
+name: secludy-autopilot-redactor
+description: Secludy AutoPilot Redactor - AI-powered PII detection with self-evolving pattern discovery
+type: application
+
+version: "1.0.0"
+
+appVersion: "8"

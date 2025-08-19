@@ -1,0 +1,82 @@
+# Secludy Helm Chart - Two-Phase Deployment
+# Phase 1: Rule Generation (with LLM)
+# Phase 2: Detection Workers (without LLM)
+
+## Image Configuration
+image:
+  repository: secludy/autopilot-redactor
+  tag: "2024.08.18"
+  pullPolicy: IfNotPresent
+
+## Phase 1: Pattern Discovery & Rule Generation
+discovery:
+  enabled: true  # Run rule generation job on install
+  sampleRate: 0.001  # Sample 0.1% of data
+  maxPatterns: 5
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2"
+    limits:
+      memory: "8Gi"
+      cpu: "4"
+
+## Phase 2: Detection Workers
+detection:
+  replicas: 3
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "1"
+    limits:
+      memory: "4Gi"
+      cpu: "2"
+
+## AWS Bedrock Configuration (for Phase 1)
+aws:
+  region: us-west-2
+  credentials:
+    # Option 1: Reference existing secret
+    existingSecret: ""
+    # Option 2: Provide credentials (will create secret)
+    accessKeyId: ""
+    secretAccessKey: ""
+
+## Storage
+storage:
+  storageClass: ""  # Leave empty for default
+  rules: "1Gi"      # For generated Python scripts
+  input: "10Gi"     # For sample data
+  output: "10Gi"    # For detection results
+
+## Service Configuration
+service:
+  type: ClusterIP
+  port: 8080
+
+## Worker Mode Configuration (optional)
+mode: batch  # "batch" or "worker"
+
+## Redis (for worker mode)
+redis:
+  enabled: false  # Enable for worker mode
+  auth:
+    password: "changeme"
+
+## Monitoring
+monitoring:
+  enabled: true
+  port: 9090
+
+## Service Account
+serviceAccount:
+  create: true
+  name: ""  # Auto-generated if empty
+
+## Node Selection
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+## Log Level
+logLevel: INFO  # DEBUG, INFO, WARNING, ERROR

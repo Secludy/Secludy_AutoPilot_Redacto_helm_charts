@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "secludy.fullname" . }}-rule-generation
+  labels:
+    {{- include "secludy.labels" . | nindent 4 }}
+    secludy.io/phase: rule-generation
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "secludy.selectorLabels" . | nindent 8 }}
+        secludy.io/phase: rule-generation
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: rule-generator
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: DEPLOYMENT_MODE
+          value: "discovery"
+        - name: SAMPLE_RATE
+          value: "{{ .Values.discovery.sampleRate }}"
+        - name: MAX_PATTERNS
+          value: "{{ .Values.discovery.maxPatterns }}"
+        - name: LLM_PROVIDER
+          value: "bedrock"
+        - name: AWS_REGION
+          value: {{ .Values.aws.region }}
+        - name: BEDROCK_MODEL
+          value: "anthropic.claude-opus-4-1-20250805-v1:0"
+        {{- if .Values.aws.credentials.existingSecret }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.aws.credentials.existingSecret }}
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.aws.credentials.existingSecret }}
+              key: secret-access-key
+        {{- else if .Values.aws.credentials.accessKeyId }}
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "secludy.fullname" . }}-aws
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "secludy.fullname" . }}-aws
+              key: secret-access-key
+        {{- end }}
+        volumeMounts:
+        - name: sample-data
+          mountPath: /app/input
+        - name: rules-output
+          mountPath: /app/secludy_recognizers
+        resources:
+          {{- toYaml .Values.discovery.resources | nindent 10 }}
+      volumes:
+      - name: sample-data
+        configMap:
+          name: {{ include "secludy.fullname" . }}-sample-data
+      - name: rules-output
+        persistentVolumeClaim:
+          claimName: {{ include "secludy.fullname" . }}-rules

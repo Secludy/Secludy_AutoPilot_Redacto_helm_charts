@@ -1,0 +1,89 @@
+version: '3.8'
+
+# Secludy AutoPilot Redactor - Automated Two-Phase Deployment
+# Just run: docker-compose up
+# Phase 1 runs first, Phase 2 starts automatically when Phase 1 completes
+
+services:
+  # ============================================
+  # PHASE 1: Pattern Discovery & Rule Generation
+  # ============================================
+  rule-generator:
+    image: secludy/autopilot-redactor:latest
+    container_name: secludy-rule-generator
+    environment:
+      - DEPLOYMENT_MODE=discovery
+      - LLM_PROVIDER=bedrock
+      - AWS_REGION=${AWS_REGION:-us-west-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - BEDROCK_MODEL=anthropic.claude-opus-4-1-20250805-v1:0
+      - SAMPLE_RATE=${SAMPLE_RATE:-0.001}
+      - MAX_PATTERNS=${MAX_PATTERNS:-5}
+    volumes:
+      - ./sample-data:/app/input:ro
+      - rules-volume:/app/secludy_recognizers
+    command: |
+      bash -c "
+        echo '🔍 Phase 1: Generating rules...'
+        python run_discovery_with_pii_id_core_refactored.py \
+          --input /app/input/sample.json \
+          --generate-rules
+        echo '✅ Rules generated successfully'
+        # Create marker file for health check
+        touch /app/secludy_recognizers/rules.ready
+      "
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/secludy_recognizers/rules.ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 100
+
+  # ============================================
+  # PHASE 2: Detection Workers (auto-start after Phase 1)
+  # ============================================
+  detection-worker:
+    image: secludy/autopilot-redactor:latest
+    container_name: secludy-detection
+    depends_on:
+      rule-generator:
+        condition: service_completed_successfully
+    environment:
+      - DEPLOYMENT_MODE=detection
+      - WORKER_ID=worker-1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - rules-volume:/app/secludy_recognizers:ro
+      - ./input-data:/app/input:ro
+      - ./output-data:/app/output
+    ports:
+      - "8000:8000"
+      - "9090:9090"
+    deploy:
+      replicas: ${WORKERS:-3}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: API Gateway
+  api:
+    image: secludy/autopilot-redactor:latest
+    container_name: secludy-api
+    depends_on:
+      rule-generator:
+        condition: service_completed_successfully
+    environment:
+      - DEPLOYMENT_MODE=api
+    volumes:
+      - rules-volume:/app/secludy_recognizers:ro
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  rules-volume:
+    name: secludy-rules

@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "secludy.fullname" . }}-detection
+  labels:
+    {{- include "secludy.labels" . | nindent 4 }}
+    secludy.io/phase: detection
+spec:
+  replicas: {{ .Values.detection.replicas | default 3 }}
+  selector:
+    matchLabels:
+      {{- include "secludy.selectorLabels" . | nindent 6 }}
+      secludy.io/phase: detection
+  template:
+    metadata:
+      labels:
+        {{- include "secludy.selectorLabels" . | nindent 8 }}
+        secludy.io/phase: detection
+    spec:
+      initContainers:
+      # Wait for rules to be generated
+      - name: wait-for-rules
+        image: busybox:1.35
+        command: ['sh', '-c', 'until [ -f /rules/version.txt ]; do echo "Waiting for rules..."; sleep 5; done; echo "Rules found!"']
+        volumeMounts:
+        - name: rules
+          mountPath: /rules
+          readOnly: true
+      
+      containers:
+      - name: detection-worker
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: DEPLOYMENT_MODE
+          value: "detection"
+        - name: WORKER_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: LOG_LEVEL
+          value: {{ .Values.logLevel | default "INFO" }}
+        {{- if eq .Values.mode "worker" }}
+        - name: REDIS_URL
+          value: "redis://{{ include "secludy.fullname" . }}-redis:6379"
+        {{- end }}
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: metrics
+        volumeMounts:
+        - name: rules
+          mountPath: /app/secludy_recognizers
+          readOnly: true
+        - name: input-data
+          mountPath: /app/input
+          readOnly: true
+        - name: output-data
+          mountPath: /app/output
+        resources:
+          {{- toYaml .Values.detection.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      
+      volumes:
+      - name: rules
+        persistentVolumeClaim:
+          claimName: {{ include "secludy.fullname" . }}-rules
+          readOnly: true
+      - name: input-data
+        persistentVolumeClaim:
+          claimName: {{ include "secludy.fullname" . }}-input
+      - name: output-data
+        persistentVolumeClaim:
+          claimName: {{ include "secludy.fullname" . }}-output
+      
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

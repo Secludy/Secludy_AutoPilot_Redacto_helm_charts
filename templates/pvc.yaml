@@ -1,0 +1,55 @@
+# PVC for storing generated rules
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "secludy.fullname" . }}-rules
+  labels:
+    {{- include "secludy.labels" . | nindent 4 }}
+    secludy.io/purpose: rule-storage
+spec:
+  accessModes:
+    - ReadWriteMany  # Multiple pods need to read
+  resources:
+    requests:
+      storage: {{ .Values.storage.rules | default "1Gi" }}
+  {{- if .Values.storage.storageClass }}
+  storageClassName: {{ .Values.storage.storageClass }}
+  {{- end }}
+
+---
+# PVC for input data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "secludy.fullname" . }}-input
+  labels:
+    {{- include "secludy.labels" . | nindent 4 }}
+    secludy.io/purpose: input-data
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.storage.input | default "10Gi" }}
+  {{- if .Values.storage.storageClass }}
+  storageClassName: {{ .Values.storage.storageClass }}
+  {{- end }}
+
+---
+# PVC for output data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "secludy.fullname" . }}-output
+  labels:
+    {{- include "secludy.labels" . | nindent 4 }}
+    secludy.io/purpose: output-data
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.storage.output | default "10Gi" }}
+  {{- if .Values.storage.storageClass }}
+  storageClassName: {{ .Values.storage.storageClass }}
+  {{- end }}
